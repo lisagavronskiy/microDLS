@@ -5,7 +5,7 @@ import csv
 import threading
 
 # Configure the serial port
-BAUD_RATE = 115200  
+BAUD_RATE = 230400  
 
 ports = [port.device for port in list_ports.comports()]
 SERIAL_PORT = next(port for port in ports if 'usbmodem' in port)
@@ -17,7 +17,7 @@ class GetArdunioData:
     def csv_write(self, duration=10):
         # Open the serial connection
         ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-        time.sleep(0.5)  # Establish connection
+        time.sleep(2)  # Establish connection
 
         # Open CSV file for writing
         csv_filename = "data_output.csv"

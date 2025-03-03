@@ -506,7 +506,7 @@ class DLSMeasurementApp(QWidget):
         self.csv_thread = threading.Thread(target=self.csv_writer.csv_write, args=(self.meas_time,), daemon=True)
         self.csv_thread.start()
 
-        time.sleep(0.5)
+        time.sleep(2)
 
         interval_ms = self.meas_interval * 1000
         self.timer.start(interval_ms)

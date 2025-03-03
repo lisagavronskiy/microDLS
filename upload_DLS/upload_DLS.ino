@@ -2,14 +2,14 @@
 
 const int dlsVoltageIn = A0;  // Define the analog input pin
 const int tempIn = A2;  // Define the analog input pin
-const int sampleRate = 1000; // Sampling rate in Hz 
+const int sampleRate = 1100; // Sampling rate in Hz 
 
 const float R1 = 10000;
 float logR2, R2, T, Tc;  
 const float c1 = 1.009249522e-03, c2 = 2.378405444e-04, c3 = 2.019202697e-07;
 
 void setup() {
-  Serial.begin(115200); // Start serial communication at 115200 baud rate
+  Serial.begin(230400); // Start serial communication at 115200 baud rate
 }
 
 void loop() {
