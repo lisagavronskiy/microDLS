@@ -33,7 +33,7 @@ class DLSMeasurementApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("DLS Measurement App")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 800, 700)
 
         self.setStyleSheet(f"""
             QWidget {{
@@ -580,14 +580,6 @@ class DLSMeasurementApp(QWidget):
         self.particle_time.append(self.measurement_time)
         self.particle_size.append(np.random.uniform(10, 500))  # random nm size
 
-        # 2) Temperature
-        self.temp_time.append(self.measurement_time)
-        self.temp_values.append(np.random.uniform(20, 80))     # random °C
-
-        # 3) DLS Reading
-        self.dls_time.append(self.measurement_time)
-        self.dls_values.append(np.random.uniform(0.1, 2.0))    # random DLS value
-
         try:
             self.df = pd.read_csv("data_output.csv")
             # -----------------------------
@@ -637,7 +629,9 @@ class DLSMeasurementApp(QWidget):
             self.dls_ax.set_xlabel('Time (s)')
             self.dls_ax.set_ylabel('DLS Reading (a.u.)')
             self.dls_ax.grid()
+            self.dls_canvas.draw()
         except Exception as e:
+            print(e)
             print('No data available yet.')
 
     def display_error(self, error_message):
@@ -648,6 +642,10 @@ class DLSMeasurementApp(QWidget):
         msg_box.setWindowTitle("Error")
         msg_box.setStandardButtons(QMessageBox.Ok)
         msg_box.exec()  # Show the message box
+
+    def closeEvent(self, event):
+        if hasattr(self, 'csv_writer'):
+            self.csv_writer.stop()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

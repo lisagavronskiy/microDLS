@@ -66,16 +66,16 @@ class GetArdunioData:
                     else:
                         if values[0] == '-1':
                             self.error = Exception('LID OPEN: Measurement Stopping')
-                            raise Exception
-
+                            self.stop()
+                            
+                print(f"Data saved to {csv_filename}")
         except Exception as e:
             pass
 
-        print(f"Data saved to {csv_filename}")
 
-        self.stop()
+        self.close_connection()
 
-    def stop(self):
+    def close_connection(self):
         if self.ser.is_open:
             # Turn off laser
             print('Turning laser off...')
@@ -84,5 +84,6 @@ class GetArdunioData:
             # Close the serial connection
             self.ser.close()
 
+    def stop(self):
         # Close
         self.stop_event.set()
