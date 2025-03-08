@@ -7,7 +7,7 @@ import time
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QSpinBox,
     QDoubleSpinBox, QComboBox, QProgressBar, QTabWidget, QHBoxLayout,
-    QGroupBox, QCheckBox
+    QGroupBox, QCheckBox, QMessageBox, QFileDialog
 )
 from PySide6.QtCore import Qt, QTimer
 
@@ -18,14 +18,16 @@ from process_data import *
 
 ICONS = 'icons'
 COLORS = {
-    'background': '#2E3440',
-    'text': '#D8DEE9',
-    'widget_background': '#4C566A',
-    'border': '#81A1C1',
-    'hover': '#5E81AC',
-    'disabled_background': '#3B4252',
-    'disabled_text': '#B0BEC5'
+    'background': '#F5F2FA',  
+    'text_background': 'black',   
+    'text_accent': 'white', 
+    'widget_background': '#7E57C2', 
+    'border': '#9575CD',   
+    'hover': '#B39DDB',    
+    'disabled_background': '#E3D7F5',  
+    'disabled_text': '#6F5A89'   
 }
+
 
 class DLSMeasurementApp(QWidget):
     def __init__(self):
@@ -36,7 +38,7 @@ class DLSMeasurementApp(QWidget):
         self.setStyleSheet(f"""
             QWidget {{
                 background-color: {COLORS['background']};
-                color: {COLORS['text']};
+                color: {COLORS['text_background']};
                 font-size: 14px;
             }}
             QLineEdit, QPushButton, QSpinBox, QDoubleSpinBox, QComboBox {{
@@ -44,10 +46,15 @@ class DLSMeasurementApp(QWidget):
                 border: 1px solid {COLORS['border']};
                 padding: 8px;
                 border-radius: 8px;
-                color: white;
+                color: {COLORS['text_accent']};
             }}
             QPushButton:hover {{
                 background-color: {COLORS['hover']};
+            }}
+            QPushButton:disabled {{
+                background-color: {COLORS['disabled_background']}; 
+                color: {COLORS['disabled_text']}; 
+                border: 1px solid {COLORS['hover']}; 
             }}
             QTabWidget::pane {{
                 border: 1px solid {COLORS['border']};
@@ -57,6 +64,7 @@ class DLSMeasurementApp(QWidget):
                 alignment: center;
             }}
             QTabBar::tab {{
+                color: {COLORS['text_accent']};
                 background: {COLORS['widget_background']};
                 border: 1px solid {COLORS['border']};
                 margin: 1px;
@@ -74,7 +82,7 @@ class DLSMeasurementApp(QWidget):
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
                 padding: 0 5px;
-                color: {COLORS['text']};
+                color: {COLORS['text_background']};
             }}
             QCheckBox::indicator:unchecked {{
                 border: 2px solid {COLORS['border']};
@@ -137,12 +145,19 @@ class DLSMeasurementApp(QWidget):
                 width: 8px;
                 height: 8px;
             }}
+            QMessageBox {{
+            background-color: {COLORS['background']};
+            color: {COLORS['text_background']};
+            font-size: 14px;
+            border: 1px solid {COLORS['border']};
+            border-radius: 8px;
+            }}
         """)
 
         # Initialize user input values
         self.viscosity = 1.0
-        self.meas_time = 30
-        self.meas_interval = 5
+        self.meas_time = 15
+        self.meas_interval = 1
         self.pump1_speed = 1.0
         self.pump2_speed = 1.0
 
@@ -206,6 +221,7 @@ class DLSMeasurementApp(QWidget):
               1) Particle Size
               2) Temperature
               3) DLS Reading
+         - Download data
         """
         layout = QVBoxLayout()
 
@@ -235,7 +251,7 @@ class DLSMeasurementApp(QWidget):
                 border: 1px solid {COLORS['border']};
                 background: {COLORS['widget_background']};
                 border-radius: 8px;
-                color: white;
+                color: {COLORS['text_accent']};
                 padding: 8px;
                 text-align: right;
             }}
@@ -301,6 +317,11 @@ class DLSMeasurementApp(QWidget):
         self.measurement_subtabs.addTab(self.dls_tab, "DLS Reading")
 
         self.measurement_tab.setLayout(layout)
+
+        self.download_button = QPushButton("Download Data")
+        self.download_button.setEnabled(False) 
+        self.download_button.clicked.connect(self.download_data)
+        layout.addWidget(self.download_button)
 
     def setup_settings_tab(self):
         """
@@ -438,6 +459,13 @@ class DLSMeasurementApp(QWidget):
     # ---------------------
     # Logic / Callbacks
     # ---------------------
+    def download_data(self):
+        """Download DLS data"""
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save Data", "", "CSV Files (*.csv);;All Files (*)")
+
+        if file_path:
+            self.df.to_csv(file_path, index=False)
+
     def toggle_viscosity_mode(self):
         """
         If checkbox is checked => Manual Viscosity
@@ -488,6 +516,7 @@ class DLSMeasurementApp(QWidget):
     def start_measurement(self):
         """Start the measurement timer and reset progress/data to 0."""
         self.measurement_time = 0
+        self.download_button.setEnabled(False)
 
         self.particle_time.clear()
         self.particle_size.clear()
@@ -502,14 +531,16 @@ class DLSMeasurementApp(QWidget):
 
         # Start CSV writing in its own thread
         self.csv_writer = GetArdunioData()
+        if self.csv_writer.error:
+            self.display_error('Arduino is not connected')
+        else:
+            self.csv_thread = threading.Thread(target=self.csv_writer.csv_write, args=(self.meas_time,), daemon=True)
+            self.csv_thread.start()
 
-        self.csv_thread = threading.Thread(target=self.csv_writer.csv_write, args=(self.meas_time,), daemon=True)
-        self.csv_thread.start()
-
-        time.sleep(2)
-
-        interval_ms = self.meas_interval * 1000
-        self.timer.start(interval_ms)
+            time.sleep(2)
+            
+            interval_ms = self.meas_interval * 1000
+            self.timer.start(interval_ms)
 
 
     def stop_measurement(self):
@@ -524,12 +555,19 @@ class DLSMeasurementApp(QWidget):
         Update the three sub-tab graphs with simulated data
         and handle progress/time.
         """
+        if self.csv_writer.error:
+            self.display_error(str(self.csv_writer.error))
+            self.timer.stop()
+            self.progress_bar.setValue(100)
+            return
+        
         total_time = self.meas_time
         interval = self.meas_interval
 
         if self.measurement_time >= total_time:
             self.timer.stop()
             self.progress_bar.setValue(100)
+            self.download_button.setEnabled(True)
             return
 
         self.measurement_time += interval
@@ -550,56 +588,66 @@ class DLSMeasurementApp(QWidget):
         self.dls_time.append(self.measurement_time)
         self.dls_values.append(np.random.uniform(0.1, 2.0))    # random DLS value
 
-        df = pd.read_csv("data_output.csv")
-        # -----------------------------
-        # Update Particle Size Tab
-        # -----------------------------
-        self.particle_ax.clear()
-        self.particle_ax.plot(
-            self.particle_time,
-            self.particle_size,
-            label='Particle Size'
-        )
-        self.particle_ax.set_title('Particle Size Over Time')
-        self.particle_ax.set_xlabel('Time (s)')
-        self.particle_ax.set_ylabel('Size (nm)')
-        self.particle_ax.grid()
-        self.particle_canvas.draw()
+        try:
+            self.df = pd.read_csv("data_output.csv")
+            # -----------------------------
+            # Update Particle Size Tab
+            # -----------------------------
+            self.particle_ax.clear()
+            self.particle_ax.plot(
+                self.particle_time,
+                self.particle_size,
+                label='Particle Size'
+            )
+            self.particle_ax.set_title('Particle Size Over Time')
+            self.particle_ax.set_xlabel('Time (s)')
+            self.particle_ax.set_ylabel('Size (nm)')
+            self.particle_ax.grid()
+            self.particle_canvas.draw()
 
-        # -----------------------------
-        # Update Temperature Tab
-        # -----------------------------
-        self.temp_ax.clear()
-        self.temp_ax.plot(
-            # self.temp_time,
-            # self.temp_values,
-            df['Time (seconds)'], df['Temperature'],
-            color='orange',
-            label='Temperature'
-        )
-        self.temp_ax.set_title('Temperature Over Time')
-        self.temp_ax.set_xlabel('Time (s)')
-        self.temp_ax.set_ylabel('Temperature (°C)')
-        self.temp_ax.grid()
-        self.temp_canvas.draw()
+            # -----------------------------
+            # Update Temperature Tab
+            # -----------------------------
+            self.temp_ax.clear()
+            self.temp_ax.plot(
+                # self.temp_time,
+                # self.temp_values,
+                self.df['Time (microseconds)'], self.df['Temperature'],
+                color='orange',
+                label='Temperature'
+            )
+            self.temp_ax.set_title('Temperature Over Time')
+            self.temp_ax.set_xlabel('Time (s)')
+            self.temp_ax.set_ylabel('Temperature (°C)')
+            self.temp_ax.grid()
+            self.temp_canvas.draw()
 
-        # -----------------------------
-        # Update DLS Reading Tab
-        # -----------------------------
-        self.dls_ax.clear()
-        self.dls_ax.plot(
-            # self.dls_time,
-            # self.dls_values,
-            df['Time (seconds)'], df['DLS Value'],
-            color='green',
-            label='DLS Reading'
-        )
-        self.dls_ax.set_title('DLS Reading Over Time')
-        self.dls_ax.set_xlabel('Time (s)')
-        self.dls_ax.set_ylabel('DLS Reading (a.u.)')
-        self.dls_ax.grid()
-        self.dls_canvas.draw()
+            # -----------------------------
+            # Update DLS Reading Tab
+            # -----------------------------
+            self.dls_ax.clear()
+            self.dls_ax.plot(
+                # self.dls_time,
+                # self.dls_values,
+                self.df['Time (microseconds)'], self.df['DLS Value'],
+                color='green',
+                label='DLS Reading'
+            )
+            self.dls_ax.set_title('DLS Reading Over Time')
+            self.dls_ax.set_xlabel('Time (s)')
+            self.dls_ax.set_ylabel('DLS Reading (a.u.)')
+            self.dls_ax.grid()
+        except Exception as e:
+            print('No data available yet.')
 
+    def display_error(self, error_message):
+        """Error display"""
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Critical)  # Error icon
+        msg_box.setText(error_message)
+        msg_box.setWindowTitle("Error")
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.exec()  # Show the message box
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
