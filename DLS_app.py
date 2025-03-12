@@ -141,8 +141,8 @@ class DLSMeasurementApp(QWidget):
 
         # Initialize user input values
         self.viscosity = 1.0
-        self.meas_time = 30
-        self.meas_interval = 5
+        self.meas_time = 5
+        self.meas_interval = 1
         self.pump1_speed = 1.0
         self.pump2_speed = 1.0
 
@@ -346,7 +346,7 @@ class DLSMeasurementApp(QWidget):
         timing_group = QGroupBox("Measurement Timing")
         timing_layout = QVBoxLayout()
 
-        self.time_label = QLabel("Total Measurement Time (s):")
+        self.time_label = QLabel("Total Measurement Time (microseconds):")
         self.time_input = QSpinBox()
         self.time_input.setRange(1, 600)
         self.time_input.setValue(self.meas_time)
@@ -414,7 +414,7 @@ class DLSMeasurementApp(QWidget):
         # Particle Size
         self.particle_ax.clear()
         self.particle_ax.set_title('Particle Size Over Time')
-        self.particle_ax.set_xlabel('Time (s)')
+        self.particle_ax.set_xlabel('Time (microseconds)')
         self.particle_ax.set_ylabel('Particle Size (nm)')
         self.particle_ax.grid()
         self.particle_canvas.draw()
@@ -422,7 +422,7 @@ class DLSMeasurementApp(QWidget):
         # Temperature
         self.temp_ax.clear()
         self.temp_ax.set_title('Temperature Over Time')
-        self.temp_ax.set_xlabel('Time (s)')
+        self.temp_ax.set_xlabel('Time (microseconds)')
         self.temp_ax.set_ylabel('Temperature (°C)')
         self.temp_ax.grid()
         self.temp_canvas.draw()
@@ -430,7 +430,7 @@ class DLSMeasurementApp(QWidget):
         # DLS Reading
         self.dls_ax.clear()
         self.dls_ax.set_title('DLS Reading Over Time')
-        self.dls_ax.set_xlabel('Time (s)')
+        self.dls_ax.set_xlabel('Time (microseconds)')
         self.dls_ax.set_ylabel('DLS Reading (a.u.)')
         self.dls_ax.grid()
         self.dls_canvas.draw()
@@ -501,7 +501,7 @@ class DLSMeasurementApp(QWidget):
         self.progress_bar.setValue(0)
 
         # Start CSV writing in its own thread
-        self.csv_writer = GetArdunioData()
+        self.csv_writer = GetArduinoData()
 
         self.csv_thread = threading.Thread(target=self.csv_writer.csv_write, args=(self.meas_time,), daemon=True)
         self.csv_thread.start()
@@ -550,7 +550,8 @@ class DLSMeasurementApp(QWidget):
         self.dls_time.append(self.measurement_time)
         self.dls_values.append(np.random.uniform(0.1, 2.0))    # random DLS value
 
-        df = pd.read_csv("data_output.csv")
+        # df = pd.read_csv("data_output.csv")
+        df = pd.read_csv("formatted_dls_data.csv")
         # -----------------------------
         # Update Particle Size Tab
         # -----------------------------
@@ -561,7 +562,7 @@ class DLSMeasurementApp(QWidget):
             label='Particle Size'
         )
         self.particle_ax.set_title('Particle Size Over Time')
-        self.particle_ax.set_xlabel('Time (s)')
+        self.particle_ax.set_xlabel('Time (microseconds)')
         self.particle_ax.set_ylabel('Size (nm)')
         self.particle_ax.grid()
         self.particle_canvas.draw()
@@ -573,12 +574,12 @@ class DLSMeasurementApp(QWidget):
         self.temp_ax.plot(
             # self.temp_time,
             # self.temp_values,
-            df['Time (seconds)'], df['Temperature'],
+            df['Time(microseconds)'], df['Temperature(C)'],
             color='orange',
             label='Temperature'
         )
         self.temp_ax.set_title('Temperature Over Time')
-        self.temp_ax.set_xlabel('Time (s)')
+        self.temp_ax.set_xlabel('Time (microseconds)')
         self.temp_ax.set_ylabel('Temperature (°C)')
         self.temp_ax.grid()
         self.temp_canvas.draw()
@@ -590,12 +591,12 @@ class DLSMeasurementApp(QWidget):
         self.dls_ax.plot(
             # self.dls_time,
             # self.dls_values,
-            df['Time (seconds)'], df['DLS Value'],
+            df['Time(microseconds)'], df['DLS Value'],
             color='green',
             label='DLS Reading'
         )
         self.dls_ax.set_title('DLS Reading Over Time')
-        self.dls_ax.set_xlabel('Time (s)')
+        self.dls_ax.set_xlabel('Time (microseconds)')
         self.dls_ax.set_ylabel('DLS Reading (a.u.)')
         self.dls_ax.grid()
         self.dls_canvas.draw()
