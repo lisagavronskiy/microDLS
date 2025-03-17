@@ -5,8 +5,11 @@ import csv
 import threading
 import numpy as np
 
+
 # Configure the serial port
 BAUD_RATE = 115200  
+SUBSET_LENGTH = 800
+DELAY = 2
 
 class GetArdunioData:
     def __init__(self):
@@ -15,9 +18,9 @@ class GetArdunioData:
         ports = [port.device for port in list_ports.comports()]
         serial_port = next((port for port in ports if 'usbmodem' in port or 'COM8' in port), None)
         self.ser = serial.Serial(serial_port, BAUD_RATE, timeout=1)
-        time.sleep(2)  # Establish connection
+        time.sleep(DELAY)  # Establish connection
 
-        self.error = None if self.ser.is_open else serial.PortNotOpenError
+        self.error = None # if self.ser.is_open else serial.PortNotOpenError
 
     def csv_write(self, duration=10):
         batch_times = []
@@ -25,26 +28,28 @@ class GetArdunioData:
     
         # Open the serial connection
         print('Connection established')
-        print('Turning laser on...')
+        # print('Turning laser on...')
         try:
-            self.ser.write('H'.encode())
+            # self.ser.write('H'.encode())
             
-            time.sleep(2)
+            time.sleep(DELAY)
 
             # Open CSV file for writing
             csv_filename = "data_output.csv"
+
+
             with open(csv_filename, mode='w', newline='') as file:
                 writer = csv.writer(file)
-                writer.writerow(["Time (microseconds)", "DLS Value", "Temperature"]) 
+                writer.writerow(["Time(microseconds)", "DLS Value", "Temperature(C)"]) 
 
                 print("Collecting data...")
                 start_time = time.time()
-
+        
                 while (time.time() - start_time < duration) and not self.stop_event.is_set():
                     line = self.ser.readline().decode('ISO-8859-1').strip()
                     values = line.split(",")
 
-                    if len(values) == 802:  # Ensure correct format (800 readings + 1 elapsed time)
+                    if len(values) == SUBSET_LENGTH + 2:  # Ensure correct format (800 readings + 1 elapsed time)
                         dls_values = [int(v) for v in values[:-2]]  # First 800 values are DLS intensity
                         elapsed_time_microseconds = int(values[-2])  # Second last value is elapsed time in microseconds
                         temp_c = float(values[-1]) # Last value is temperature in Celcius
@@ -52,23 +57,25 @@ class GetArdunioData:
                         batch_num += 1
 
                         # Compute average time step in microseconds
-                        time_step_microseconds = elapsed_time_microseconds / 800  
+                        time_step_microseconds = elapsed_time_microseconds / SUBSET_LENGTH  
                         
                         # Generate time series in microseconds
                         if batch_num == 0:
-                            time_series = [int(i * time_step_microseconds) for i in range(800)]
+                            time_series = [int(i * time_step_microseconds) for i in range(SUBSET_LENGTH)]
                         else:
-                            time_series = [int(i * time_step_microseconds + np.sum(batch_times)) for i in range(800)]
+                            time_series = [int(i * time_step_microseconds + np.sum(batch_times)) for i in range(SUBSET_LENGTH)]
                         # Write data to CSV
                         for t, intensity in zip(time_series, dls_values):
                             writer.writerow([t, intensity, temp_c])  
                         batch_times.append(elapsed_time_microseconds)
                     else:
-                        if values[0] == '-1':
-                            self.error = Exception('LID OPEN: Measurement Stopping')
-                            self.stop()
+                        pass
+                        # if values[0] == '-1':
+                        #    self.error = Exception('LID OPEN: Measurement Stopping')
+                        #    self.stop()
                             
                 print(f"Data saved to {csv_filename}")
+
         except Exception as e:
             pass
 
@@ -78,8 +85,8 @@ class GetArdunioData:
     def close_connection(self):
         if self.ser.is_open:
             # Turn off laser
-            print('Turning laser off...')
-            self.ser.write('L'.encode())
+            # print('Turning laser off...')
+            #self.ser.write('L'.encode())
 
             # Close the serial connection
             self.ser.close()

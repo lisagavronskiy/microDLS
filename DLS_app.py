@@ -3,36 +3,39 @@ import numpy as np
 import pandas as pd
 import threading
 import time
+import zipfile
 
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QSpinBox,
     QDoubleSpinBox, QComboBox, QProgressBar, QTabWidget, QHBoxLayout,
-    QGroupBox, QCheckBox, QMessageBox, QFileDialog
+    QGroupBox, QCheckBox, QMessageBox, QFileDialog, QAbstractItemView
 )
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices, QPixmap
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-from process_data import *
+from connect_arduino import *
+from data_processing.demo_script import post_processing
 
 ICONS = 'icons'
 COLORS = {
-    'background': '#F5F2FA',  
-    'text_background': 'black',   
-    'text_accent': 'white', 
-    'widget_background': '#7E57C2', 
-    'border': '#9575CD',   
-    'hover': '#B39DDB',    
-    'disabled_background': '#E3D7F5',  
-    'disabled_text': '#6F5A89'   
+    'background': '#eff6ff',  # Lighter blue shade
+    'text_background': '#36558f',
+    'text_accent': '#36558f',
+    'widget_background': '#baefff',  # Blue shade
+    'border': '#36558f',  # Slightly lighter blue
+    'hover': '#81D4FA',  # Light blue hover
+    'disabled_background': '#E0F7FA',  # Same light blue as background
+    'disabled_text': '#80ACC9'  # Muted blue for disabled text
 }
 
 
 class DLSMeasurementApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("DLS Measurement App")
+        self.setWindowTitle("µicroDLS App")
         self.setGeometry(100, 100, 800, 700)
 
         self.setStyleSheet(f"""
@@ -87,12 +90,12 @@ class DLSMeasurementApp(QWidget):
             QCheckBox::indicator:unchecked {{
                 border: 2px solid {COLORS['border']};
                 border-radius: 3px;
-                background-color: {COLORS['widget_background']};
+                background-color: {COLORS['disabled_background']};
             }}
             QCheckBox::indicator:checked {{
                 border: 2px solid {COLORS['border']};
                 border-radius: 3px;
-                background-color: {COLORS['border']};
+                background-color: {COLORS['widget_background']};
             }}
             QComboBox:disabled,
             QDoubleSpinBox:disabled,
@@ -105,10 +108,26 @@ class DLSMeasurementApp(QWidget):
                 subcontrol-origin: padding;
                 subcontrol-position: top right;
                 width: 24px;
-                background: {COLORS['widget_background']};
+                background: {COLORS['widget_background']};  
                 border: 1px solid {COLORS['border']};
                 border-top-right-radius: 8px;
                 border-bottom-right-radius: 8px;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {COLORS['hover']};  
+                color: {COLORS['text_background']};  
+                border: 1px solid {COLORS['border']};
+                selection-background-color: {COLORS['widget_background']};  
+                selection-color: {COLORS['text_accent']};
+            }}
+
+            QComboBox::item {{
+                background-color: {COLORS['hover']};
+                color: {COLORS['text_background']};
+            }}
+            QComboBox::item:selected {{
+                background-color: {COLORS['widget_background']};
+                color: {COLORS['text_accent']};
             }}
             QComboBox::down-arrow {{
                 image: url("{ICONS}/down-arrow.svg");
@@ -152,11 +171,15 @@ class DLSMeasurementApp(QWidget):
             border: 1px solid {COLORS['border']};
             border-radius: 8px;
             }}
+            QTabBar::tab:disabled {{
+                background: {COLORS['disabled_background']};  /* Set the background color for disabled tabs */
+                color: {COLORS['disabled_text']};  /* Set the text color for disabled tabs */
+            }}
         """)
 
         # Initialize user input values
         self.viscosity = 1.0
-        self.meas_time = 15
+        self.meas_time = 5
         self.meas_interval = 1
         self.pump1_speed = 1.0
         self.pump2_speed = 1.0
@@ -176,9 +199,18 @@ class DLSMeasurementApp(QWidget):
 
         # Default viscosities
         self.viscosity_values = {
-            "Silica": 1.2,
-            "Polystyrene": 0.9,
-            "Titanium Dioxide": 1.5
+            "Water": 0.89,  
+            "Ethanol": 1.2,  
+            "Methanol": 0.55,  
+            "Acetone": 0.32,  
+            "Toluene": 0.59,  
+            "Glycerol": 945,  
+            "DMF (Dimethylformamide)": 0.92,  
+            "DMSO (Dimethyl sulfoxide)": 1.99,  
+            "Chloroform": 0.57,  
+            "Hexane": 0.31,  
+            "Benzene": 0.65,  
+            "THF (Tetrahydrofuran)": 0.46,  
         }
 
         main_layout = QVBoxLayout()
@@ -221,7 +253,7 @@ class DLSMeasurementApp(QWidget):
               1) Particle Size
               2) Temperature
               3) DLS Reading
-         - Download data
+          - Download data
         """
         layout = QVBoxLayout()
 
@@ -283,11 +315,15 @@ class DLSMeasurementApp(QWidget):
         self.particle_fig = Figure()
         self.particle_ax = self.particle_fig.add_subplot(111)
         self.particle_canvas = FigureCanvas(self.particle_fig)
-        p_layout.addWidget(self.particle_canvas)
+        p_layout.addWidget(self.particle_canvas, stretch=1)
+        # Add a label to show the loading message
+        self.loading_label = QLabel("")
+        self.loading_label.setAlignment(Qt.AlignCenter)
+        p_layout.addWidget(self.loading_label, stretch=0)
+
 
         self.particle_tab.setLayout(p_layout)
-        self.measurement_subtabs.addTab(self.particle_tab, "Particle Size")
-
+        
         # ----------------
         # 2) Temperature Tab
         # ----------------
@@ -300,7 +336,6 @@ class DLSMeasurementApp(QWidget):
         t_layout.addWidget(self.temp_canvas)
 
         self.temp_tab.setLayout(t_layout)
-        self.measurement_subtabs.addTab(self.temp_tab, "Temperature")
 
         # ----------------
         # 3) DLS Reading Tab
@@ -314,7 +349,15 @@ class DLSMeasurementApp(QWidget):
         d_layout.addWidget(self.dls_canvas)
 
         self.dls_tab.setLayout(d_layout)
+
+        # Add tabs to the sub-tab widget. Note the order:
+        # index 0: DLS Reading, index 1: Temperature, index 2: Particle Size.
         self.measurement_subtabs.addTab(self.dls_tab, "DLS Reading")
+        self.measurement_subtabs.addTab(self.temp_tab, "Temperature")
+        self.measurement_subtabs.addTab(self.particle_tab, "Particle Size")
+
+        # Initially disable the Particle Size tab until processing is complete.
+        self.measurement_subtabs.setTabEnabled(2, False)
 
         self.measurement_tab.setLayout(layout)
 
@@ -337,25 +380,22 @@ class DLSMeasurementApp(QWidget):
         viscosity_layout = QVBoxLayout()
 
         self.manual_viscosity_checkbox = QCheckBox("  Manual Viscosity Entry")
-        # default is unchecked => "Particle-based" mode
         self.manual_viscosity_checkbox.setChecked(False)
         self.manual_viscosity_checkbox.toggled.connect(self.toggle_viscosity_mode)
         viscosity_layout.addWidget(self.manual_viscosity_checkbox)
 
-        # Particle Selection (only enabled if manual is NOT checked)
         self.particle_label = QLabel("Select Particle:")
         self.particle_selection = QComboBox()
-        self.particle_selection.addItems(["Silica", "Polystyrene", "Titanium Dioxide"])
+        self.particle_selection.addItems(self.viscosity_values.keys())
         self.particle_selection.currentTextChanged.connect(self.set_viscosity)
         viscosity_layout.addWidget(self.particle_label)
         viscosity_layout.addWidget(self.particle_selection)
 
-        # Manual Viscosity (only enabled if manual is checked)
         self.viscosity_label = QLabel("Viscosity (mPa·s):")
         self.viscosity_input = QDoubleSpinBox()
         self.viscosity_input.setRange(0.1, 1000.0)
         self.viscosity_input.setValue(self.viscosity)
-        self.viscosity_input.setEnabled(False)  # default -> disabled
+        self.viscosity_input.setEnabled(False)
         self.viscosity_input.valueChanged.connect(self.viscosity_input_changed)
         viscosity_layout.addWidget(self.viscosity_label)
         viscosity_layout.addWidget(self.viscosity_input)
@@ -411,7 +451,6 @@ class DLSMeasurementApp(QWidget):
         pump_group.setLayout(pump_layout)
         main_layout.addWidget(pump_group)
 
-        # Apply the overall layout to the Settings tab
         self.settings_tab.setLayout(main_layout)
 
     def setup_about_tab(self):
@@ -420,8 +459,23 @@ class DLSMeasurementApp(QWidget):
         """
         layout = QVBoxLayout()
 
-        about_label = QLabel("Make sure dingy fits in the pupu, snuggly...no wiggle")
-        about_label.setStyleSheet("font-size: 20px;")
+        # Add the logo at the top
+        logo_label = QLabel()
+        logo_label.setPixmap(QPixmap(f"{ICONS}/logo.svg").scaled(500, 500, Qt.KeepAspectRatio))
+        logo_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(logo_label)
+
+        # About text
+        about_text = (
+            "<b>Our Aim:</b> To combine nanoparticle synthesis with characterization, creating an all-in-one platform.<br><br>"
+            "<b>DLS Principle:</b> A 635 nm laser is directed at a sample, and scattered light is captured at a 90° angle to calculate particle size.<br><br>"
+            "<b>Sample Handling:</b> Measurements are taken from a standard DLS cuvette or a fluidic chip with a reaction chamber, inlets, outlets, and an integrated pumping system for real-time monitoring.<br><br>"
+            "<b>Photon Detection:</b> A high voltage is applied to operate an avalanche photodiode (APD) in reverse bias, with the current amplified for analysis via Arduino.<br><br>"
+            "<b>Data Analysis:</b> Intensity fluctuations between cycles are correlated with time. An exponential fit of the correlation function determines particle size."
+        )
+
+        about_label = QLabel(about_text)
+        about_label.setStyleSheet("font-size: 16px; line-height: 1.5;")
         about_label.setWordWrap(True)
         layout.addWidget(about_label)
 
@@ -429,18 +483,15 @@ class DLSMeasurementApp(QWidget):
 
     def setup_blank_graphs(self):
         """
-        Initialize empty/placeholder Matplotlib plots in all 3 sub-tabs
-        so the progress bar stays at 0% until the user starts.
+        Initialize empty/placeholder Matplotlib plots in all 3 sub-tabs.
         """
-        # Particle Size
         self.particle_ax.clear()
-        self.particle_ax.set_title('Particle Size Over Time')
-        self.particle_ax.set_xlabel('Time (s)')
-        self.particle_ax.set_ylabel('Particle Size (nm)')
-        self.particle_ax.grid()
+        # self.particle_ax.set_title('Particle Size Over Time')
+        # self.particle_ax.set_xlabel('Time (s)')
+        # self.particle_ax.set_ylabel('Particle Size (nm)')
+        # self.particle_ax.grid()
         self.particle_canvas.draw()
 
-        # Temperature
         self.temp_ax.clear()
         self.temp_ax.set_title('Temperature Over Time')
         self.temp_ax.set_xlabel('Time (s)')
@@ -448,7 +499,6 @@ class DLSMeasurementApp(QWidget):
         self.temp_ax.grid()
         self.temp_canvas.draw()
 
-        # DLS Reading
         self.dls_ax.clear()
         self.dls_ax.set_title('DLS Reading Over Time')
         self.dls_ax.set_xlabel('Time (s)')
@@ -456,33 +506,34 @@ class DLSMeasurementApp(QWidget):
         self.dls_ax.grid()
         self.dls_canvas.draw()
 
-    # ---------------------
-    # Logic / Callbacks
-    # ---------------------
     def download_data(self):
         """Download DLS data"""
-        file_path, _ = QFileDialog.getSaveFileName(self, "Save Data", "", "CSV Files (*.csv);;All Files (*)")
+        zip_path, _ = QFileDialog.getSaveFileName(self, 'Save ZIP', '', 'ZIP Files (*.zip)')
+        if zip_path:
+            # Create ZIP file
+            with zipfile.ZipFile(zip_path, 'w') as zipf:
+                # Add CSVs to the ZIP
+                zipf.write('results.csv', 'ParticleSize.csv')
+                zipf.write('autocorrelation_data.csv', 'AutoCorrelation.csv')
+                zipf.write('data_output.csv', 'RawData.csv')
 
-        if file_path:
-            self.df.to_csv(file_path, index=False)
+            # Open the folder where the ZIP was saved (optional)
+            folder_path = zip_path.rsplit('/', 1)[0]
+            QDesktopServices.openUrl(QUrl.fromLocalFile(folder_path))
+
+            print(f'ZIP file created at {zip_path}')
+
 
     def toggle_viscosity_mode(self):
-        """
-        If checkbox is checked => Manual Viscosity
-        If checkbox is unchecked => Particle-based Viscosity
-        """
         if self.manual_viscosity_checkbox.isChecked():
-            # Manual Viscosity => enable spinbox, disable particle selection
             self.viscosity_input.setEnabled(True)
             self.particle_selection.setEnabled(False)
         else:
-            # Particle-based => disable spinbox, enable particle selection
             self.viscosity_input.setEnabled(False)
             self.particle_selection.setEnabled(True)
             self.set_viscosity()
 
     def set_viscosity(self):
-        """Set the viscosity based on selected particle if in particle mode."""
         if not self.manual_viscosity_checkbox.isChecked():
             particle = self.particle_selection.currentText()
             default_viscosity = self.viscosity_values.get(particle, 1.0)
@@ -490,23 +541,18 @@ class DLSMeasurementApp(QWidget):
             self.viscosity = default_viscosity
 
     def viscosity_input_changed(self):
-        """Change viscosity based on user input."""
         self.viscosity = self.viscosity_input.value()
 
     def meas_time_input_changed(self):
-        """Change measurement time based on user input."""
         self.meas_time = self.time_input.value()
 
     def meas_interval_input_changed(self):
-        """Change measurement interval based on user input."""
         self.meas_interval = self.interval_input.value()
 
     def pump1_speed_input_changed(self):
-        """Change pump 1 speed based on user input."""
         self.pump1_speed = self.pump_speed_spin1.value()
 
     def pump2_speed_input_changed(self):
-        """Change pump 2 speed based on user input."""
         self.pump2_speed = self.pump_speed_spin2.value()
 
     def csv_write_task(self):
@@ -517,43 +563,36 @@ class DLSMeasurementApp(QWidget):
         """Start the measurement timer and reset progress/data to 0."""
         self.measurement_time = 0
         self.download_button.setEnabled(False)
+        self.particle_ax.clear()
+        # Ensure Particle Size tab remains disabled during measurement & processing.
+        self.measurement_subtabs.setTabEnabled(2, False)
 
         self.particle_time.clear()
         self.particle_size.clear()
-
         self.temp_time.clear()
         self.temp_values.clear()
-
         self.dls_time.clear()
         self.dls_values.clear()
-
         self.progress_bar.setValue(0)
 
-        # Start CSV writing in its own thread
         self.csv_writer = GetArdunioData()
         if self.csv_writer.error:
             self.display_error('Arduino is not connected')
         else:
             self.csv_thread = threading.Thread(target=self.csv_writer.csv_write, args=(self.meas_time,), daemon=True)
             self.csv_thread.start()
-
             time.sleep(2)
-            
             interval_ms = self.meas_interval * 1000
             self.timer.start(interval_ms)
-
 
     def stop_measurement(self):
         """Stop the measurement timer."""
         self.timer.stop()
-
-        # Stop CSV writing thread
         self.csv_writer.stop()
 
     def update_graph(self):
         """
-        Update the three sub-tab graphs with simulated data
-        and handle progress/time.
+        Update the sub-tab graphs with simulated data and handle progress/time.
         """
         if self.csv_writer.error:
             self.display_error(str(self.csv_writer.error))
@@ -567,44 +606,39 @@ class DLSMeasurementApp(QWidget):
         if self.measurement_time >= total_time:
             self.timer.stop()
             self.progress_bar.setValue(100)
+            # Run post processing in a separate thread so the GUI remains responsive.
+            processing_thread = threading.Thread(target=self.run_post_processing, daemon=True)
+            processing_thread.start()
             self.download_button.setEnabled(True)
             return
 
         self.measurement_time += interval
-
         progress_value = int((self.measurement_time / total_time) * 100)
         self.progress_bar.setValue(progress_value)
 
-        # Simulate data for each sub-tab
-        # 1) Particle size
+        # Update simulated Particle Size data.
         self.particle_time.append(self.measurement_time)
-        self.particle_size.append(np.random.uniform(10, 500))  # random nm size
+        self.particle_size.append(np.random.uniform(10, 500)) 
 
         try:
             self.df = pd.read_csv("data_output.csv")
-            # -----------------------------
-            # Update Particle Size Tab
-            # -----------------------------
-            self.particle_ax.clear()
-            self.particle_ax.plot(
-                self.particle_time,
-                self.particle_size,
-                label='Particle Size'
-            )
-            self.particle_ax.set_title('Particle Size Over Time')
-            self.particle_ax.set_xlabel('Time (s)')
-            self.particle_ax.set_ylabel('Size (nm)')
-            self.particle_ax.grid()
-            self.particle_canvas.draw()
+            # Update Particle Size Tab (while measurement is active, before post processing)
+            # self.particle_ax.clear()
+            # self.particle_ax.plot(
+            #     self.particle_time,
+            #     self.particle_size,
+            #     label='Particle Size'
+            # )
+            # self.particle_ax.set_title('Particle Size Over Time')
+            # self.particle_ax.set_xlabel('Time (s)')
+            # self.particle_ax.set_ylabel('Size (nm)')
+            # self.particle_ax.grid()
+            # self.particle_canvas.draw()
 
-            # -----------------------------
             # Update Temperature Tab
-            # -----------------------------
             self.temp_ax.clear()
             self.temp_ax.plot(
-                # self.temp_time,
-                # self.temp_values,
-                self.df['Time (microseconds)'], self.df['Temperature'],
+                self.df['Time(microseconds)'], self.df['Temperature(C)'],
                 color='orange',
                 label='Temperature'
             )
@@ -614,14 +648,10 @@ class DLSMeasurementApp(QWidget):
             self.temp_ax.grid()
             self.temp_canvas.draw()
 
-            # -----------------------------
             # Update DLS Reading Tab
-            # -----------------------------
             self.dls_ax.clear()
             self.dls_ax.plot(
-                # self.dls_time,
-                # self.dls_values,
-                self.df['Time (microseconds)'], self.df['DLS Value'],
+                self.df['Time(microseconds)'], self.df['DLS Value'],
                 color='green',
                 label='DLS Reading'
             )
@@ -634,14 +664,64 @@ class DLSMeasurementApp(QWidget):
             print(e)
             print('No data available yet.')
 
+    def run_post_processing(self):
+        """
+        Runs the long post_processing task. While running, display "Loading..."
+        in the Particle Size tab. Once done, read the "results.csv" file and update
+        the plot. Finally, re-enable the Particle Size tab.
+        """
+        # Display loading message
+        self.measurement_subtabs.setTabEnabled(2, True)
+        self.loading_label.setText("Loading...")
+        # Call the blocking post_processing function
+        post_processing()
+        # After processing, read results from results.csv and update the plot.
+        try:
+            results_df = pd.read_csv("results.csv")
+            self.particle_ax.clear()
+            
+            # Use "Radius (nm)" as x-axis.
+            x = results_df["Radius (nm)"]
+            
+            # Loop through each contribution (1 to 7)
+            num_results = int(len(results_df.columns)-1 / 2)
+            diameters = []
+
+            for i in range(1, num_results):
+                contrib_col = f"Contribution {i}"
+                diam_col = f"Diameter {i} (nm)"
+                
+                # Check if both columns exist in the CSV
+                if contrib_col in results_df.columns and diam_col in results_df.columns:
+                    y = results_df[contrib_col]
+                    # Assume the diameter is constant for this set
+                    diameter = results_df[diam_col].iloc[0]
+                    diameters.append(diameter)
+                    label = f"Set {i}, diameter = {diameter}"
+                    self.particle_ax.plot(x, y,label=label)
+            
+            
+            self.particle_ax.set_title(f"Particle Size Results | Average Diameter = {int(np.average(diameters))} nm")
+            self.particle_ax.set_xlabel("Radius (nm)")
+            self.particle_ax.set_ylabel("Correlation")
+            self.particle_ax.grid()
+            self.particle_ax.legend()
+            self.particle_canvas.draw()
+
+
+        except Exception as e:
+            print("Error reading results.csv:", e)
+        # Re-enable the Particle Size tab and clear the loading message.
+        self.loading_label.setText("")
+
     def display_error(self, error_message):
         """Error display"""
         msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Critical)  # Error icon
+        msg_box.setIcon(QMessageBox.Critical)
         msg_box.setText(error_message)
         msg_box.setWindowTitle("Error")
         msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec()  # Show the message box
+        msg_box.exec()
 
     def closeEvent(self, event):
         if hasattr(self, 'csv_writer'):
