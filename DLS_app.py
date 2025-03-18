@@ -674,7 +674,7 @@ class DLSMeasurementApp(QWidget):
         self.measurement_subtabs.setTabEnabled(2, True)
         self.loading_label.setText("Loading...")
         # Call the blocking post_processing function
-        post_processing()
+        # post_processing()
         # After processing, read results from results.csv and update the plot.
         try:
             results_df = pd.read_csv("results.csv")

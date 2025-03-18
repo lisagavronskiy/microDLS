@@ -20,7 +20,7 @@ class GetArdunioData:
         self.ser = serial.Serial(serial_port, BAUD_RATE, timeout=1)
         time.sleep(DELAY)  # Establish connection
 
-        self.error = None # if self.ser.is_open else serial.PortNotOpenError
+        self.error = None if self.ser.is_open else serial.PortNotOpenError
 
     def csv_write(self, duration=10):
         batch_times = []
@@ -28,11 +28,14 @@ class GetArdunioData:
     
         # Open the serial connection
         print('Connection established')
-        # print('Turning laser on...')
+        print('Turning laser on...')
         try:
-            # self.ser.write('H'.encode())
+            self.ser.write('H'.encode())
             
             time.sleep(DELAY)
+            self.ser.readline().decode('ISO-8859-1').strip()
+            self.ser.readline().decode('ISO-8859-1').strip()
+            self.ser.readline().decode('ISO-8859-1').strip()
 
             # Open CSV file for writing
             csv_filename = "data_output.csv"
@@ -70,9 +73,9 @@ class GetArdunioData:
                         batch_times.append(elapsed_time_microseconds)
                     else:
                         pass
-                        # if values[0] == '-1':
-                        #    self.error = Exception('LID OPEN: Measurement Stopping')
-                        #    self.stop()
+                        if values[0] == '-1':
+                            self.error = Exception('LID OPEN: Measurement Stopping')
+                            self.stop()
                             
                 print(f"Data saved to {csv_filename}")
 
@@ -85,8 +88,8 @@ class GetArdunioData:
     def close_connection(self):
         if self.ser.is_open:
             # Turn off laser
-            # print('Turning laser off...')
-            #self.ser.write('L'.encode())
+            print('Turning laser off...')
+            self.ser.write('L'.encode())
 
             # Close the serial connection
             self.ser.close()

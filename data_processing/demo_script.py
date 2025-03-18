@@ -5,7 +5,7 @@ from data_processing.dlsAnalyzer import *
 
 def post_processing():
     # convert data to peaks
-    convert_to_peaks("data_output.csv")
+    convert_to_peaks("data_output_example.csv")
     # Initialize plots
     # plt.rcParams['figure.figsize'] = [10, 5]
 

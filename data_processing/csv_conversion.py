@@ -4,7 +4,7 @@ import csv
 import numpy as np
 
 SET_LENGTH = 1600
-NUM_SETS = 7
+NUM_SETS = 5
 selected_range = [0, SET_LENGTH * NUM_SETS]
 
 def plot_peak(x, y, local_min_left, local_min_right, local_max):

@@ -4,13 +4,9 @@ unsigned int analogVals[numReadings];
 long t, t0;
 
 // switch + laser
-const int transistor = 2;
+const int transistor = 7;
 char laser_on;
 
-// calculation constants for temp
-const float R1 = 10000;
-float logR2, R2, T, Tc;  
-const float c1 = 1.009249522e-03, c2 = 2.378405444e-04, c3 = 2.019202697e-07;
 
 // Speed of the ADC
 // defines for setting and clearing register bits
@@ -34,8 +30,7 @@ void setup() {
 }
 
 void loop() {
-  int light_in = analogRead(A1);
-  int temp_in = analogRead(A2);
+  int light_in = analogRead(A3);
 
   if ((laser_on == 'H') && light_in < 150) {
       digitalWrite(transistor, HIGH);
@@ -46,11 +41,6 @@ void loop() {
   
   
   if (light_in < 150){
-
-    R2 = R1 * (1023.0 / (float)temp_in - 1.0);  
-    logR2 = log(R2);
-    T = (1.0 / (c1 + c2 * logR2 + c3 * logR2 * logR2 * logR2));
-    Tc = T - 273.15;
 
     int dummy = analogRead(A0); // this is because the first point is usually of bad quality
     
@@ -75,12 +65,11 @@ void loop() {
     }
     Serial.print(t);
     Serial.print(',');
-    Serial.println(Tc);
+    Serial.println(25);
   }
   else{
     digitalWrite(transistor, LOW);
     Serial.println(-1);
   }
-  delay(100);
 
 }
