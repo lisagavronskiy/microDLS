@@ -384,7 +384,7 @@ class DLSMeasurementApp(QWidget):
         self.manual_viscosity_checkbox.toggled.connect(self.toggle_viscosity_mode)
         viscosity_layout.addWidget(self.manual_viscosity_checkbox)
 
-        self.particle_label = QLabel("Select Particle:")
+        self.particle_label = QLabel("Select Solvent:")
         self.particle_selection = QComboBox()
         self.particle_selection.addItems(self.viscosity_values.keys())
         self.particle_selection.currentTextChanged.connect(self.set_viscosity)
