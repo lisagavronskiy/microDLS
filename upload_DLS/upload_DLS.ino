@@ -8,8 +8,7 @@ const int transistor = 7;
 char laser_on;
 
 
-// Speed of the ADC
-// defines for setting and clearing register bits
+// Speed of the ADC, defines for setting and clearing register bits
 #ifndef cbi
 #define cbi(sfr, bit) (_SFR_BYTE(sfr) &= ~_BV(bit))
 #endif
@@ -22,8 +21,8 @@ void setup() {
   Serial.begin(115200);
 
   // set prescale to 16
-  sbi(ADCSRA, ADPS2) ; // cbi means clear bit
-  cbi(ADCSRA, ADPS1) ; // sbi means set bit
+  sbi(ADCSRA, ADPS2) ;
+  cbi(ADCSRA, ADPS1) ; 
   cbi(ADCSRA, ADPS0) ;
 
   pinMode (transistor,  OUTPUT);
@@ -40,10 +39,7 @@ void loop() {
   }
   
   
-  if (light_in < 150){
-
-    int dummy = analogRead(A0); // this is because the first point is usually of bad quality
-    
+  if (light_in < 150){    
     t0 = micros();
     
     // Construct the array
