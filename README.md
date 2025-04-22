@@ -3,7 +3,7 @@
 ## About the Project
 Efficient real-time monitoring and control of nanoparticle synthesis in laboratories remains challenging, limiting advancements in pharmaceuticals and energy storage. Our solution, the µicroDLS, is a miniaturized characterization device that enables real-time particle size measurements during reactions by integrating dynamic light scattering (DLS) with a chip-based in-situ fluid flow system. It leverages lab-on-chip capabilities to streamline workflows and enables easy in-situ particle size measurements, reducing characterization time and complexity while providing deeper research insights.
 
-The poster containing more detailed information about the design, solution, and results is available in [`µicroDLS.png`](./µicroDLS.png).
+The poster containing more detailed information about the design, solution, and results is available in [`µicroDLS.pdf`](./µicroDLS.pdf).
 
 
 ![µicroDLS Front View](./images/device_front.png)
